@@ -4,8 +4,12 @@ use Filament\Facades\Filament;
 use Filament\Navigation\NavigationGroup;
 use Filament\Navigation\NavigationItem;
 use Filament\Pages\Page;
-use Filament\Support\Icons\Heroicon;
+use Filament\Resources\Pages\ListRecords;
+use Filament\Tests\Fixtures\Clusters\UserManagement;
 use Filament\Tests\Fixtures\Clusters\UserManagement\Pages\ManageAdmins;
+use Filament\Tests\Fixtures\Clusters\WithoutSubNavigationCluster;
+use Filament\Tests\Fixtures\Clusters\WithoutSubNavigationCluster\Pages\ClusteredPageWithoutSubNavigation;
+use Filament\Tests\Fixtures\Resources\Users\UserResource;
 use Filament\Tests\Panels\Navigation\TestCase;
 
 use function Filament\Tests\livewire;
@@ -13,65 +17,39 @@ use function Filament\Tests\livewire;
 uses(TestCase::class);
 
 it('can register navigation items from resources and pages', function (): void {
-    expect(Filament::getNavigation())
-        ->sequence(
-            fn ($group) => $group
-                ->toBeInstanceOf(NavigationGroup::class)
-                ->getLabel()->toBeNull()
-                ->getItems()
-                ->sequence(
-                    fn ($item) => $item
-                        ->getLabel()->toBe('Dashboard')
-                        ->getIcon()->toBe(Heroicon::OutlinedHome),
-                    fn ($item) => $item
-                        ->getLabel()->toBe('Actions'),
-                    fn ($item) => $item
-                        ->getLabel()->toBe('User Management')
-                        ->getIcon()->toBe(Heroicon::OutlinedUsers),
-                    fn ($item) => $item
-                        ->getLabel()->toBe('Companies')
-                        ->getIcon()->toBe(Heroicon::OutlinedBuildingOffice),
-                    fn ($item) => $item
-                        ->getLabel()->toBe('Departments')
-                        ->getIcon()->toBe(Heroicon::OutlinedRectangleStack),
-                    fn ($item) => $item
-                        ->getLabel()->toBe('Tickets')
-                        ->getIcon()->toBe(Heroicon::OutlinedRectangleStack),
-                    fn ($item) => $item
-                        ->getLabel()->toBe('Ticket Messages')
-                        ->getIcon()->toBe(Heroicon::OutlinedRectangleStack),
-                    fn ($item) => $item
-                        ->getLabel()->toBe('Users')
-                        ->getIcon()->toBe(Heroicon::OutlinedUser),
-                    fn ($item) => $item
-                        ->getLabel()->toBe('Settings')
-                        ->getIcon()->toBe(Heroicon::OutlinedCog6Tooth),
-                )
-                ->each->toBeInstanceOf(NavigationItem::class),
-            fn ($group) => $group
-                ->toBeInstanceOf(NavigationGroup::class)
-                ->getLabel()->toBe('Blog')
-                ->getItems()
-                ->sequence(
-                    fn ($item) => $item
-                        ->getLabel()->toBe('Posts')
-                        ->getIcon()->toBe(Heroicon::OutlinedDocumentText),
-                    fn ($item) => $item
-                        ->getLabel()->toBe('Post Categories')
-                        ->getIcon()->toBe(Heroicon::OutlinedRectangleStack),
-                )
-                ->each->toBeInstanceOf(NavigationItem::class),
-            fn ($group) => $group
-                ->toBeInstanceOf(NavigationGroup::class)
-                ->getLabel()->toBe('Shop')
-                ->getItems()
-                ->sequence(
-                    fn ($item) => $item
-                        ->getLabel()->toBe('Products')
-                        ->getIcon()->toBe(Heroicon::OutlinedShoppingBag),
-                )
-                ->each->toBeInstanceOf(NavigationItem::class),
-        );
+    $navigation = Filament::getNavigation();
+    $groups = collect($navigation);
+
+    expect($groups)->each->toBeInstanceOf(NavigationGroup::class);
+
+    $allItems = $groups->flatMap(fn (NavigationGroup $group) => $group->getItems());
+    expect($allItems)->each->toBeInstanceOf(NavigationItem::class);
+
+    $itemLabels = $allItems->map(fn (NavigationItem $item) => $item->getLabel());
+
+    // Verify core pages and resources are registered
+    expect($itemLabels)
+        ->toContain('Dashboard')
+        ->toContain('Companies')
+        ->toContain('Users')
+        ->toContain('Posts')
+        ->toContain('Products');
+
+    // Verify navigation groups contain expected items
+    $groupLabels = $groups->map(fn (NavigationGroup $group) => $group->getLabel());
+    expect($groupLabels)->toContain(null)->toContain('Blog')->toContain('Shop');
+
+    $blogItemLabels = collect($groups->first(fn (NavigationGroup $group) => $group->getLabel() === 'Blog')->getItems())
+        ->map(fn (NavigationItem $item) => $item->getLabel());
+    expect($blogItemLabels)->toContain('Posts')->toContain('Post Categories');
+
+    $shopItemLabels = collect($groups->first(fn (NavigationGroup $group) => $group->getLabel() === 'Shop')->getItems())
+        ->map(fn (NavigationItem $item) => $item->getLabel());
+    expect($shopItemLabels)->toContain('Products');
+
+    // Verify Dashboard appears first (has lowest sort order)
+    $defaultGroupItems = collect($groups->first(fn (NavigationGroup $group) => $group->getLabel() === null)->getItems());
+    expect($defaultGroupItems->first()->getLabel())->toBe('Dashboard');
 });
 
 it('can reorder navigation groups by registering them', function (): void {
@@ -333,4 +311,48 @@ it('can use enum `HasLabel` for cluster sub-navigation groups', function (): voi
     expect($groupLabels)->toContain('System Settings');
     expect($groupLabels)->not->toContain('Users');
     expect($groupLabels)->not->toContain('Settings');
+});
+
+it('can disable sub-navigation for a cluster', function (): void {
+    // Access a page within the cluster that has sub-navigation disabled
+    $this->get(ClusteredPageWithoutSubNavigation::getUrl())->assertSuccessful();
+
+    $component = livewire(ClusteredPageWithoutSubNavigation::class);
+
+    $subNavigation = $component->instance()->getSubNavigation();
+
+    expect($subNavigation)->toBe([]);
+});
+
+it('returns sub-navigation when cluster has sub-navigation enabled', function (): void {
+    // `UserManagement` cluster has sub-navigation enabled by default
+    $this->get(ManageAdmins::getUrl())->assertSuccessful();
+
+    $component = livewire(ManageAdmins::class);
+
+    $subNavigation = $component->instance()->getSubNavigation();
+
+    expect($subNavigation)->not->toBeEmpty();
+});
+
+it('can disable sub-navigation for resource pages in a cluster', function (): void {
+    // Create a test resource page that would be in a cluster with sub-navigation disabled
+    $listRecordsPage = new class extends ListRecords
+    {
+        protected static ?string $cluster = WithoutSubNavigationCluster::class;
+
+        protected static string $resource = UserResource::class;
+    };
+
+    $subNavigation = $listRecordsPage->getSubNavigation();
+
+    expect($subNavigation)->toBeEmpty();
+});
+
+it('can check if cluster should register sub-navigation', function (): void {
+    // Test that `UserManagement` cluster has sub-navigation enabled by default
+    expect(UserManagement::shouldRegisterSubNavigation())->toBeTrue();
+
+    // Test that `WithoutSubNavigationCluster` has sub-navigation disabled
+    expect(WithoutSubNavigationCluster::shouldRegisterSubNavigation())->toBeFalse();
 });

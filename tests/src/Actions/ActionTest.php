@@ -5,6 +5,7 @@ use Filament\Actions\Testing\TestAction;
 use Filament\Notifications\Notification;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tests\Actions\TestCase;
+use Filament\Tests\Fixtures\Models\Post;
 use Filament\Tests\Fixtures\Pages\Actions;
 use Illuminate\Support\Str;
 
@@ -497,4 +498,74 @@ it('can mount an action that replaces itself and then call the replaced action',
         ->assertActionMounted('replaced-action')
         ->callMountedAction()
         ->assertDispatched('replaced-action-called');
+});
+
+it('can call an action registered alongside a group in `extraModalFooterActions()`', function (): void {
+    livewire(Actions::class)
+        ->callAction([
+            'withGroupedExtraActions',
+            TestAction::make('simpleExtra'),
+        ])
+        ->assertDispatched('simple-extra-called');
+});
+
+it('can call an action with data registered in a group in `extraModalFooterActions()`', function (): void {
+    livewire(Actions::class)
+        ->callAction([
+            'withGroupedExtraActions',
+            TestAction::make('option3'),
+        ], [
+            'value' => $value = Str::random(),
+        ])
+        ->assertHasNoFormErrors()
+        ->assertDispatched('option3-called', value: $value);
+});
+
+it('can mount an action that has a group in `extraModalFooterActions()`', function (): void {
+    livewire(Actions::class)
+        ->mountAction('withGroupedExtraActions')
+        ->assertActionMounted('withGroupedExtraActions');
+});
+
+it('can call multiple actions registered in a group in `extraModalFooterActions()`', function (): void {
+    livewire(Actions::class)
+        ->callAction([
+            'withGroupedExtraActions',
+            TestAction::make('option1'),
+        ])
+        ->assertDispatched('option1-called');
+
+    livewire(Actions::class)
+        ->callAction([
+            'withGroupedExtraActions',
+            TestAction::make('option2'),
+        ])
+        ->assertDispatched('option2-called');
+});
+
+it('can submit parent action after calling an action registered in a group in `extraModalFooterActions()`', function (): void {
+    livewire(Actions::class)
+        ->callAction([
+            'withGroupedExtraActions',
+            TestAction::make('option1'),
+        ])
+        ->assertDispatched('option1-called')
+        ->fillForm([
+            'content' => $content = Str::random(),
+        ])
+        ->callMountedAction()
+        ->assertHasNoActionErrors()
+        ->assertDispatched('grouped-extra-actions-called', content: $content);
+});
+
+it('can assert an action exists with arguments that are used to resolve a record for a schema', function (): void {
+    $postId = Post::factory()->create()->getKey();
+
+    livewire(Actions::class)
+        ->assertActionExists('arguments-with-record-and-schema', arguments: [
+            'post_id' => $postId,
+        ])
+        ->assertActionVisible('arguments-with-record-and-schema', arguments: [
+            'post_id' => $postId,
+        ]);
 });
